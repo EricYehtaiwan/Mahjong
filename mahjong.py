@@ -443,92 +443,107 @@ function checkRyamen(sequences, winNorm) {{
   return false;
 }}
 
+function sumHan(yaku) {{
+  for (const y of yaku) {{ if (y.includes('役滿')) return 9999; }}
+  return yaku.reduce((s,y)=>{{const m=y.match(/\((\d+)翻\)/);return s+(m?parseInt(m[1]):0);}},0);
+}}
+
 function checkYaku(handNames, winNorm) {{
-  const counts=handToCounts(handNames), yaku=[];
+  const counts=handToCounts(handNames);
   if (isKokushi(counts)) {{
     const r=['國士無雙 (役滿)'];
     if (isTsumo) r.unshift('門清自摸 (1翻)');
     return r;
   }}
-  if (isChiitoitsu(counts)) {{
-    if (isTsumo) yaku.push('門清自摸 (1翻)');
-    yaku.push('七對子 (2翻)');
-    const allN=handNames.map(t=>norm(t));
-    const suits=new Set(allN.filter(t=>!isHonor(t)).map(t=>tileSuit(t)));
-    const hasH=allN.some(t=>isHonor(t));
-    if (!hasH&&suits.size===1) yaku.push(isTsumo?'清一色 (6翻)':'清一色 (5翻)');
-    else if (suits.size===1&&hasH) yaku.push(isTsumo?'混一色 (3翻)':'混一色 (2翻)');
-    return yaku;
-  }}
-  const decomp=getDecomposition(counts);
-  if (!decomp) return [];
-  if (isTsumo) yaku.push('門清自摸 (1翻)');
-  const {{sequences,triplets,pair}}=decomp;
   const allN=handNames.map(t=>norm(t));
   const suits=new Set(allN.filter(t=>!isHonor(t)).map(t=>tileSuit(t)));
   const hasH=allN.some(t=>isHonor(t));
   const hasT=allN.some(t=>!isHonor(t)&&(tileNum(t)===1||tileNum(t)===9));
-  // 平和：4順子 ＋ 非役牌雀頭 ＋ 和牌張形成兩面聽
-  if (sequences.length===4) {{
-    const pairYaku=['中','白','發'].includes(pair)||pair===roundWind||pair===seatWind;
-    if (!pairYaku && checkRyamen(sequences, winNorm)) yaku.push('平和 (1翻)');
+
+  // ── 七對子路線 ──
+  let chitoiYaku=null;
+  if (isChiitoitsu(counts)) {{
+    chitoiYaku=[];
+    if (isTsumo) chitoiYaku.push('門清自摸 (1翻)');
+    chitoiYaku.push('七對子 (2翻)');
+    if (!hasH&&suits.size===1) chitoiYaku.push(isTsumo?'清一色 (6翻)':'清一色 (5翻)');
+    else if (suits.size===1&&hasH) chitoiYaku.push(isTsumo?'混一色 (3翻)':'混一色 (2翻)');
   }}
-  if (!hasH&&!hasT) yaku.push('斷幺九 (1翻)');
-  const seqKeys=sequences.map(s=>s.join(','));
-  const seqCnt={{}};seqKeys.forEach(k=>{{seqCnt[k]=(seqCnt[k]||0)+1;}});
-  const pOS=Object.values(seqCnt).reduce((s,v)=>s+Math.floor(v/2),0);
-  if (pOS===2) yaku.push('二盃口 (3翻)'); else if (pOS===1) yaku.push('一盃口 (1翻)');
-  const tripNums=triplets.filter(t=>!isHonor(t)).map(t=>{{return{{n:tileNum(t),s:tileSuit(t)}}}});
-  for (const n of new Set(tripNums.map(x=>x.n))) {{
-    const s=new Set(tripNums.filter(x=>x.n===n).map(x=>x.s));
-    if (s.has('m')&&s.has('p')&&s.has('s')){{yaku.push('三色同刻 (2翻)');break;}}
-  }}
-  const seqNums=sequences.map(s=>{{return{{n:tileNum(s[0]),s:tileSuit(s[0])}}}});
-  for (const n of new Set(seqNums.map(x=>x.n))) {{
-    const s=new Set(seqNums.filter(x=>x.n===n).map(x=>x.s));
-    if (s.has('m')&&s.has('p')&&s.has('s')){{yaku.push('三色同順 (2翻)');break;}}
-  }}
-  for (const suit of ['m','p','s']) {{
-    const starts=new Set(seqNums.filter(x=>x.s===suit).map(x=>x.n));
-    if ([1,4,7].every(n=>starts.has(n))){{yaku.push('一氣通貫 (2翻)');break;}}
-  }}
-  // 暗刻系：榮和補完刻子者不算暗刻，補完雀頭（單騎/雙碰）則全算暗刻
-  const winIsPair=(pair===winNorm);
-  const ankouCount=(isTsumo||winIsPair)
-    ? triplets.length
-    : triplets.filter(t=>t!==winNorm).length;
-  if (sequences.length===0) yaku.push('對對和 (2翻)');
-  if (triplets.length===4&&ankouCount===4) {{
-    yaku.push((!isTsumo&&winIsPair)?'四暗刻単騎 (役滿)':'四暗刻 (役滿)');
-  }} else if (triplets.length>=3&&ankouCount>=3) {{
-    yaku.push('三暗刻 (2翻)');
-  }}
-  if (allN.every(t=>isHonor(t)||tileNum(t)===1||tileNum(t)===9)) yaku.push('混老頭 (2翻)');
-  if (!hasH&&allN.every(t=>tileNum(t)===1||tileNum(t)===9)) yaku.push('清老頭 (役滿)');
-  const drT=triplets.filter(t=>['中','白','發'].includes(t)).length;
-  const drP=['中','白','發'].includes(pair);
-  if (drT===3) yaku.push('大三元 (役滿)'); else if (drT===2&&drP) yaku.push('小三元 (2翻)');
-  if (!hasH&&suits.size===1) yaku.push(isTsumo?'清一色 (6翻)':'清一色 (5翻)');
-  else if (suits.size===1&&hasH) yaku.push(isTsumo?'混一色 (3翻)':'混一色 (2翻)');
-  if (suits.size===0) yaku.push('字一色 (役滿)');
-  if (allN.every(t=>GREEN_SET.has(t))) yaku.push('緑一色 (役滿)');
-  for (const suit of ['m','p','s']) {{
-    const st=allN.filter(t=>tileSuit(t)===suit);
-    if (st.length===14) {{
-      const c={{}};st.forEach(t=>{{c[t]=(c[t]||0)+1;}});
-      const base={{}};base[`1${{suit}}`]=3;base[`9${{suit}}`]=3;
-      for(let n=2;n<=8;n++) base[`${{n}}${{suit}}`]=1;
-      if (Object.entries(base).every(([k,v])=>(c[k]||0)>=v)) yaku.push('九蓮寶燈 (役滿)');
+
+  // ── 一般分解路線 ──
+  let normalYaku=null;
+  const decomp=getDecomposition(counts);
+  if (decomp) {{
+    normalYaku=[];
+    if (isTsumo) normalYaku.push('門清自摸 (1翻)');
+    const {{sequences,triplets,pair}}=decomp;
+    // 平和：4順子 ＋ 非役牌雀頭 ＋ 和牌張形成兩面聽
+    if (sequences.length===4) {{
+      const pairYaku=['中','白','發'].includes(pair)||pair===roundWind||pair===seatWind;
+      if (!pairYaku && checkRyamen(sequences, winNorm)) normalYaku.push('平和 (1翻)');
+    }}
+    if (!hasH&&!hasT) normalYaku.push('斷幺九 (1翻)');
+    const seqKeys=sequences.map(s=>s.join(','));
+    const seqCnt={{}};seqKeys.forEach(k=>{{seqCnt[k]=(seqCnt[k]||0)+1;}});
+    const pOS=Object.values(seqCnt).reduce((s,v)=>s+Math.floor(v/2),0);
+    if (pOS===2) normalYaku.push('二盃口 (3翻)'); else if (pOS===1) normalYaku.push('一盃口 (1翻)');
+    const tripNums=triplets.filter(t=>!isHonor(t)).map(t=>{{return{{n:tileNum(t),s:tileSuit(t)}}}});
+    for (const n of new Set(tripNums.map(x=>x.n))) {{
+      const s=new Set(tripNums.filter(x=>x.n===n).map(x=>x.s));
+      if (s.has('m')&&s.has('p')&&s.has('s')){{normalYaku.push('三色同刻 (2翻)');break;}}
+    }}
+    const seqNums=sequences.map(s=>{{return{{n:tileNum(s[0]),s:tileSuit(s[0])}}}});
+    for (const n of new Set(seqNums.map(x=>x.n))) {{
+      const s=new Set(seqNums.filter(x=>x.n===n).map(x=>x.s));
+      if (s.has('m')&&s.has('p')&&s.has('s')){{normalYaku.push('三色同順 (2翻)');break;}}
+    }}
+    for (const suit of ['m','p','s']) {{
+      const starts=new Set(seqNums.filter(x=>x.s===suit).map(x=>x.n));
+      if ([1,4,7].every(n=>starts.has(n))){{normalYaku.push('一氣通貫 (2翻)');break;}}
+    }}
+    // 暗刻系：榮和補完刻子者不算暗刻，補完雀頭（單騎/雙碰）則全算暗刻
+    const winIsPair=(pair===winNorm);
+    const ankouCount=(isTsumo||winIsPair)
+      ? triplets.length
+      : triplets.filter(t=>t!==winNorm).length;
+    if (sequences.length===0) normalYaku.push('對對和 (2翻)');
+    if (triplets.length===4&&ankouCount===4) {{
+      normalYaku.push((!isTsumo&&winIsPair)?'四暗刻単騎 (役滿)':'四暗刻 (役滿)');
+    }} else if (triplets.length>=3&&ankouCount>=3) {{
+      normalYaku.push('三暗刻 (2翻)');
+    }}
+    if (allN.every(t=>isHonor(t)||tileNum(t)===1||tileNum(t)===9)) normalYaku.push('混老頭 (2翻)');
+    if (!hasH&&allN.every(t=>tileNum(t)===1||tileNum(t)===9)) normalYaku.push('清老頭 (役滿)');
+    const drT=triplets.filter(t=>['中','白','發'].includes(t)).length;
+    const drP=['中','白','發'].includes(pair);
+    if (drT===3) normalYaku.push('大三元 (役滿)'); else if (drT===2&&drP) normalYaku.push('小三元 (2翻)');
+    if (!hasH&&suits.size===1) normalYaku.push(isTsumo?'清一色 (6翻)':'清一色 (5翻)');
+    else if (suits.size===1&&hasH) normalYaku.push(isTsumo?'混一色 (3翻)':'混一色 (2翻)');
+    if (suits.size===0) normalYaku.push('字一色 (役滿)');
+    if (allN.every(t=>GREEN_SET.has(t))) normalYaku.push('緑一色 (役滿)');
+    for (const suit of ['m','p','s']) {{
+      const st=allN.filter(t=>tileSuit(t)===suit);
+      if (st.length===14) {{
+        const c={{}};st.forEach(t=>{{c[t]=(c[t]||0)+1;}});
+        const base={{}};base[`1${{suit}}`]=3;base[`9${{suit}}`]=3;
+        for(let n=2;n<=8;n++) base[`${{n}}${{suit}}`]=1;
+        if (Object.entries(base).every(([k,v])=>(c[k]||0)>=v)) normalYaku.push('九蓮寶燈 (役滿)');
+      }}
+    }}
+    for (const d of ['白','發','中']) if (triplets.includes(d)) normalYaku.push(`役牌：${{d}} (1翻)`);
+    for (const w of ['東','南','西','北']) {{
+      if (triplets.includes(w)) {{
+        const fan=(w===roundWind?1:0)+(w===seatWind?1:0);
+        if (fan>0) normalYaku.push(`役牌：${{w}} (${{fan}}翻)`);
+      }}
     }}
   }}
-  for (const d of ['白','發','中']) if (triplets.includes(d)) yaku.push(`役牌：${{d}} (1翻)`);
-  for (const w of ['東','南','西','北']) {{
-    if (triplets.includes(w)) {{
-      const fan=(w===roundWind?1:0)+(w===seatWind?1:0);
-      if (fan>0) yaku.push(`役牌：${{w}} (${{fan}}翻)`);
-    }}
+
+  // ── 兩條路線都成立時，選翻數較高的 ──
+  if (chitoiYaku && normalYaku) {{
+    return sumHan(normalYaku) >= sumHan(chitoiYaku) ? normalYaku : chitoiYaku;
   }}
-  return yaku;
+  return chitoiYaku || normalYaku || [];
 }}
 
 function checkYakuOpen(handNames, fuuroNames, winNorm) {{
