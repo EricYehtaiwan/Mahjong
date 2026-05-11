@@ -85,7 +85,7 @@ html = f"""<!DOCTYPE html>
     background: #dcdcdc; border-radius: 8px;
     padding: 10px 12px 12px; margin-bottom: 10px;
   }}
-  .tile-row {{ display: flex; gap: 4px; margin-bottom: 5px; }}
+  .tile-row {{ display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }}
   .tile-row:last-child {{ margin-bottom: 0; }}
   .tile {{
     cursor: pointer; border-radius: 4px; border: 2px solid transparent;
@@ -128,10 +128,10 @@ html = f"""<!DOCTYPE html>
   }}
   .btn-clear:hover {{ background: #fdd; border-color: #c00; }}
 
-  /* 牌列（固定一行）*/
+  /* 牌列（自動換行）*/
   .tile-row-display {{
-    display: flex; flex-wrap: nowrap; gap: 2px;
-    min-height: 54px; align-items: flex-end; overflow-x: visible;
+    display: flex; flex-wrap: wrap; gap: 2px;
+    min-height: 54px; align-items: flex-end;
   }}
   .placed-tile {{
     cursor: pointer; border-radius: 4px; border: 2px solid transparent;
@@ -661,6 +661,7 @@ function setMode(m) {{
   document.getElementById('hand-area').classList.toggle('area-on',  m==='hand');
   document.getElementById('fuuro-area').classList.toggle('area-on', m==='fuuro');
   document.getElementById('dora-area').classList.toggle('area-on',  m==='dora');
+  updatePickerState();
   hideWarning();
 }}
 document.addEventListener('keydown', e => {{
@@ -689,8 +690,9 @@ rows.forEach(row => {{
 const tileMap = {{}};
 rows.forEach(row => row.forEach(t => {{ tileMap[t.name] = t.src; }}));
 
-function setPickerDisabled(d) {{
-  document.querySelectorAll('.tile').forEach(el=>el.classList.toggle('full',d));
+function updatePickerState() {{
+  const disabled = mode !== 'dora' && totalTiles() >= 14;
+  document.querySelectorAll('.tile').forEach(el=>el.classList.toggle('full', disabled));
 }}
 
 // ── 警語 ──
@@ -775,7 +777,7 @@ function addTile(name, src) {{
     }} else {{
       drawnTile={{name,src}};               // 最後一張獨立區域
     }}
-    if (totalTiles()>=14) setPickerDisabled(true);
+    updatePickerState();
     renderHand();
     checkAndShowResult();
   }} else {{
@@ -792,16 +794,16 @@ function addTile(name, src) {{
 
 // ── 移除 ──
 function removeTile(idx) {{
-  hand.splice(idx,1); setPickerDisabled(false); hideWarning();
+  hand.splice(idx,1); updatePickerState(); hideWarning();
   document.getElementById('result-area').style.display='none';
   renderHand();
 }}
 function removeDrawnTile() {{
-  drawnTile=null; setPickerDisabled(false); hideWarning();
+  drawnTile=null; updatePickerState(); hideWarning();
   renderHand(); checkAndShowResult();
 }}
 function removeFuuroTile(idx) {{
-  fuuro.splice(idx,1); setPickerDisabled(false); hideWarning();
+  fuuro.splice(idx,1); updatePickerState(); hideWarning();
   document.getElementById('result-area').style.display='none';
   renderFuuro();
 }}
@@ -809,11 +811,11 @@ function removeFuuroTile(idx) {{
 // ── 清空 ──
 function clearArea(area) {{
   if (area==='hand') {{
-    hand=[]; drawnTile=null; setPickerDisabled(false); hideWarning();
+    hand=[]; drawnTile=null; updatePickerState(); hideWarning();
     document.getElementById('result-area').style.display='none';
     renderHand();
   }} else if (area==='fuuro') {{
-    fuuro=[]; setPickerDisabled(false); hideWarning();
+    fuuro=[]; updatePickerState(); hideWarning();
     document.getElementById('result-area').style.display='none';
     renderFuuro();
   }} else {{
@@ -1067,20 +1069,23 @@ function showResult() {{
     const m=y.match(/\((\d+)翻\)/);
     if (m) han+=parseInt(m[1]);
   }}
-  // 紅五各 +1 翻
+  // 紅五各 +1 翻（合併顯示）
   const allTileNames=[...handN,...fuuroN];
   const redCount=allTileNames.filter(n=>n.includes('r')).length;
   han+=redCount;
-  const redChips=Array.from({{length:redCount}},()=>'<span class="yaku-item">赤ドラ (1翻)</span>').join('');
-  // 寶牌各 +1 翻
+  const redChips=redCount>0?`<span class="yaku-item">赤ドラ (${{redCount}}翻)</span>`:'';
+  // 寶牌各 +1 翻（合併同種）
   const allNorm=allTileNames.map(n=>norm(n));
-  let doraHan=0; let doraChips='';
+  const doraMap={{}};
   for (const ind of doraIndicators) {{
     const actualDora=doraFromIndicator(norm(ind.name));
     const cnt=allNorm.filter(t=>t===actualDora).length;
-    doraHan+=cnt;
-    doraChips+=Array.from({{length:cnt}},()=>`<span class="yaku-item">寶牌：${{actualDora}} (1翻)</span>`).join('');
+    if (cnt>0) doraMap[actualDora]=(doraMap[actualDora]||0)+cnt;
   }}
+  const doraHan=Object.values(doraMap).reduce((s,v)=>s+v,0);
+  const doraChips=Object.entries(doraMap).map(([t,c])=>
+    `<span class="yaku-item">寶牌：${{t}} (${{c}}翻)</span>`
+  ).join('');
   if (!isYakuman) han+=doraHan;
   const chips=yaku.map(y=>`<span class="yaku-item">${{y}}</span>`).join('')+redChips+doraChips;
   // 符數與點數
